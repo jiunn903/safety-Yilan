@@ -19,7 +19,7 @@
         <div class="min-h-screen flex items-center justify-center">
             <div class="flex flex-col items-center gap-4">
                 <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                <div class="text-slate-400 font-bold text-lg">系統版本 v3.5 載入中...</div>
+                <div class="text-slate-400 font-bold text-lg">系統版本 v3.6 載入中...</div>
             </div>
         </div>
     </div>
@@ -67,12 +67,12 @@
                 const fullPrompt = `你是一位資深工安專家。請分析以下意外事件並提供專業的「三因分析」（直接原因、間接原因、基本原因）與改善建議。
                 
                 分析要求：
-                1. 「間接原因」必須明確分為「不安全的狀況」與「不安全的行為」。
+                1. 「間接原因」必須明確分為「不安全的狀況」與「不安全的行為」兩個陣列。
                 2. 「風險級別」請從「高、中、低」中選擇一個。
                 3. 回覆內容請使用繁體中文。
                 4. **必須且只能以 JSON 格式回覆**。不要有任何解釋文字、不要有 Markdown 標籤。
                 
-                回覆格式必須嚴格遵守：
+                回覆格式必須嚴格遵守以下 JSON 結構：
                 {
                   "directCauses": ["內容"],
                   "unsafeConditions": ["內容"],
@@ -82,10 +82,10 @@
                   "riskLevel": "高"
                 }
 
-                事件描述：${formData.description}`;
+                待分析事件描述：${formData.description}`;
 
                 try {
-                    // v1 穩定版請求結構
+                    // v1 穩定版請求結構，不使用 systemInstruction 以免報錯
                     const response = await fetch(apiEndpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -100,11 +100,11 @@
 
                     if (!response.ok) {
                         const detail = result.error?.message || response.status;
-                        throw new Error(`API 連線異常: ${detail}`);
+                        throw new Error(`連線失敗: ${detail} (代碼: ${response.status})`);
                     }
                     
                     let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!text) throw new Error("AI 無法生成有效回覆。");
+                    if (!text) throw new Error("AI 無法生成有效回覆，請嘗試輸入更詳盡的描述。");
 
                     // 強效解析：過濾掉 AI 可能產生的 Markdown 標籤
                     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -113,8 +113,8 @@
                         const data = JSON.parse(text);
                         setFormData(prev => ({ ...prev, analysis: data }));
                     } catch (parseErr) {
-                        console.log("原始文字內容：", text);
-                        throw new Error("數據解析失敗：AI 回傳的 JSON 格式不正確。");
+                        console.log("原始回傳內容：", text);
+                        throw new Error("數據解析失敗：AI 回傳的資料格式無法識別，請再試一次。");
                     }
                 } catch (err) {
                     setError(err.message);
@@ -130,17 +130,20 @@
                             <div className="bg-indigo-600 p-2 rounded-lg shadow-lg flex items-center justify-center">
                                 <Icon name="ShieldAlert" className="text-white" />
                             </div>
-                            <h1 className="text-xl font-black text-slate-800 tracking-tight">工安助手</h1>
+                            <h1 className="text-xl font-bold text-slate-800 tracking-tight">工安助手</h1>
                         </div>
                         <div className="px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-bold flex items-center gap-3 border border-indigo-100">
                             <Icon name="Sparkles" /> AI 終極穩定系統
                         </div>
+                        <div className="mt-4 px-4 text-[10px] text-slate-400 font-bold uppercase">
+                            Version 3.6 Stable
+                        </div>
                     </aside>
 
                     <main className="flex-grow p-6 md:p-10 max-w-5xl mx-auto w-full animate-in fade-in duration-500">
-                        <header className="mb-8">
+                        <header className="mb-8 text-center md:text-left">
                             <h2 className="text-3xl font-black text-slate-800 tracking-tight">事故診斷報告</h2>
-                            <p className="text-slate-500 mt-2 font-medium">使用穩定版 v1 端點優化連線品質。</p>
+                            <p className="text-slate-500 mt-2 font-medium italic">使用穩定版 v1 核心引擎進行分析。</p>
                         </header>
 
                         {error && (
@@ -153,11 +156,11 @@
 
                         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 mb-8 transition-all focus-within:ring-2 focus-within:ring-indigo-100">
                             <div className="flex justify-between items-center mb-4 text-xs font-black text-slate-400 uppercase tracking-widest">
-                                <span>事故經過詳細描述 / Case Detail</span>
+                                <span>事故詳細經過描述 / Incident Description</span>
                                 <button onClick={() => setFormData({description:'', analysis:null})} className="hover:text-indigo-600 font-bold px-2 py-1">清空</button>
                             </div>
                             <textarea 
-                                placeholder="請描述事故經過..."
+                                placeholder="描述詳細的事故過程，幫助 AI 提供更精準的分析..."
                                 value={formData.description}
                                 onChange={e => setFormData({...formData, description: e.target.value})}
                                 disabled={loading}
@@ -169,7 +172,7 @@
                                 className="w-full mt-4 py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg disabled:opacity-50 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
                             >
                                 {loading ? <Icon name="Loader2" className="animate-spin" /> : <Icon name="Target" />}
-                                {loading ? "AI 連線分析中..." : "開始 AI 分析診斷"}
+                                {loading ? "連線分析中，請稍候..." : "啟動 AI 診斷分析"}
                             </button>
                         </div>
 
@@ -177,7 +180,7 @@
                             <div className="animate-fade-in bg-white rounded-3xl p-8 shadow-xl border border-slate-200">
                                 <div className="flex justify-between items-center mb-8 pb-4 border-b">
                                     <div className="flex items-center gap-3 font-bold text-xl text-slate-800 tracking-tight">
-                                        <div className="w-2 h-8 bg-indigo-600 rounded-full" /> 分析報告摘要
+                                        <div className="w-2 h-8 bg-indigo-600 rounded-full" /> 事故分析摘要
                                     </div>
                                     <div className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wide border ${
                                         formData.analysis.riskLevel === '高' ? 'bg-red-50 text-red-600 border-red-200' : 
@@ -200,7 +203,7 @@
                                         <h4 className="text-amber-600 font-black mb-4 flex items-center gap-2 tracking-widest uppercase"><Icon name="Cpu" />間接原因</h4>
                                         <div className="space-y-6 flex-grow">
                                             <div>
-                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase">
+                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase tracking-widest">
                                                     <Icon name="AlertTriangle" className="text-[10px]" /> 不安全的狀況
                                                 </p>
                                                 <ul className="space-y-2 text-slate-700 font-medium">
@@ -208,7 +211,7 @@
                                                 </ul>
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase">
+                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase tracking-widest">
                                                     <Icon name="UserX" className="text-[10px]" /> 不安全的行為
                                                 </p>
                                                 <ul className="space-y-2 text-slate-700 font-medium">
@@ -239,7 +242,7 @@
                             </div>
                         )}
                         <div className="mt-8 text-center text-[10px] text-slate-300 font-black tracking-[0.2em] uppercase">
-                            Safety System v3.5 Stable Edition
+                            Safety System v3.6 Stable Edition
                         </div>
                     </main>
                 </div>
