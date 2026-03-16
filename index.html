@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工安助手 - AI 深度分析系統</title>
     <!-- 核心依賴 -->
-    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
-    <script src="[https://unpkg.com/react@18/umd/react.production.min.js](https://unpkg.com/react@18/umd/react.production.min.js)" crossorigin></script>
-    <script src="[https://unpkg.com/react-dom@18/umd/react-dom.production.min.js](https://unpkg.com/react-dom@18/umd/react-dom.production.min.js)" crossorigin></script>
-    <script src="[https://unpkg.com/@babel/standalone/babel.min.js](https://unpkg.com/@babel/standalone/babel.min.js)"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        @import url('[https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap](https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap)');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; }
         .animate-fade-in { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -21,7 +21,7 @@
         <div class="min-h-screen flex items-center justify-center">
             <div class="flex flex-col items-center gap-4">
                 <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                <div class="text-slate-400 font-bold">系統安全載入中...</div>
+                <div class="text-slate-400 font-bold text-lg">系統穩定載入中...</div>
             </div>
         </div>
     </div>
@@ -56,34 +56,35 @@
                 const rawApiKey = "AIzaSyDV4m5jAx6dHLpydhST2DwhxxzEEeWH_9g"; 
                 const apiKey = rawApiKey.trim();
                 
-                if (!apiKey || apiKey.includes("在此貼上")) {
-                    setError("尚未正確設定 API Key。請編輯 index.html 第 48 行填入您的金鑰。");
+                if (!apiKey || apiKey === "") {
+                    setError("尚未正確設定 API Key。請編輯 index.html 填入金鑰。");
                     setLoading(false);
                     return;
                 }
 
-                // 使用 v1 穩定版
+                // 強制使用 v1 穩定版端點，解決 v1beta 模型找不到的問題
                 const apiEndpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-                // 將指令融入 Prompt 以相容 v1
+                // 將所有邏輯融入 Prompt 以相容不支援 systemInstruction 的 v1 穩定版
                 const fullPrompt = `你是一位資深工安專家。請分析以下意外事件並提供專業的「三因分析」（直接原因、間接原因、基本原因）與改善建議。
                 
                 分析要求：
-                1. 間接原因必須分為「不安全的狀況」與「不安全的行為」。
-                2. 風險級別請從「高、中、低」中選擇。
-                3. 必須且只能以繁體中文 JSON 格式回覆。
+                1. 「間接原因」必須明確分為「不安全的狀況」與「不安全的行為」。
+                2. 「風險級別」請從「高、中、低」中選擇。
+                3. 請回傳繁體中文。
+                4. 必須嚴格以 JSON 格式回覆，不要有額外的解釋文字。
                 
-                回覆格式範例：
+                JSON 格式範例：
                 {
                   "directCauses": ["原因1"],
-                  "unsafeConditions": ["狀況1"],
-                  "unsafeActs": ["行為1"],
-                  "basicCauses": ["原因1"],
-                  "countermeasures": ["對策1"],
+                  "unsafeConditions": ["環境狀況1"],
+                  "unsafeActs": ["人為行為1"],
+                  "basicCauses": ["根本管理原因1"],
+                  "countermeasures": ["改善對策1"],
                   "riskLevel": "中"
                 }
 
-                待分析內容：${formData.description}`;
+                待分析事件內容：${formData.description}`;
 
                 try {
                     const response = await fetch(apiEndpoint, {
@@ -100,27 +101,30 @@
 
                     if (!response.ok) {
                         const detail = result.error?.message || response.status;
-                        throw new Error(`API 請求異常: ${detail}`);
+                        throw new Error(`API 連線異常 (${detail})。請確認 API 服務是否已「啟用」。`);
                     }
                     
                     let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!text) throw new Error("AI 無回應，請檢查輸入內容。");
+                    if (!text) throw new Error("AI 無法生成回應，請嘗試換一種描述方式。");
 
-                    // 強大解析邏輯：清除 Markdown 語法標籤
+                    // 清除 AI 可能夾帶的 Markdown 語法標籤 (如 ```json)
                     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
                     
-                    const data = JSON.parse(text);
-                    setFormData(prev => ({ ...prev, analysis: data }));
+                    try {
+                        const data = JSON.parse(text);
+                        setFormData(prev => ({ ...prev, analysis: data }));
+                    } catch (parseErr) {
+                        throw new Error("數據解析失敗：AI 回傳格式不正確。請重試一次。");
+                    }
                 } catch (err) {
-                    setError("分析失敗：" + err.message);
-                    console.error(err);
+                    setError(err.message);
                 } finally {
                     setLoading(false);
                 }
             };
 
             return (
-                <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-sm">
+                <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-sm animate-in fade-in duration-500">
                     <aside className="w-full md:w-64 bg-white border-b md:border-r border-slate-200 p-6 flex flex-col shadow-sm">
                         <div className="flex items-center gap-3 mb-10">
                             <div className="bg-indigo-600 p-2 rounded-lg shadow-lg flex items-center justify-center">
@@ -129,14 +133,14 @@
                             <h1 className="text-xl font-black text-slate-800 tracking-tight">工安助手</h1>
                         </div>
                         <div className="px-4 py-3 bg-indigo-50 text-indigo-700 rounded-xl font-bold flex items-center gap-3 border border-indigo-100">
-                            <Icon name="Sparkles" /> AI 終極穩定系統
+                            <Icon name="Sparkles" /> AI 穩定版系統
                         </div>
                     </aside>
 
                     <main className="flex-grow p-6 md:p-10 max-w-5xl mx-auto w-full">
                         <header className="mb-8">
                             <h2 className="text-3xl font-black text-slate-800 tracking-tight">事故診斷報告</h2>
-                            <p className="text-slate-500 mt-2 font-medium">基於 v1 穩定版 API 進行三因歸因分析。</p>
+                            <p className="text-slate-500 mt-2 font-medium italic">透過穩定版 API 進行自動化歸因分析。</p>
                         </header>
 
                         {error && (
@@ -147,17 +151,17 @@
                             </div>
                         )}
 
-                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 mb-8 transition-all focus-within:ring-2 focus-within:ring-indigo-100">
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 mb-8 transition-all focus-within:shadow-md">
                             <div className="flex justify-between items-center mb-4 text-xs font-black text-slate-400 uppercase tracking-widest">
-                                <span>事故經過詳細描述</span>
-                                <button onClick={() => setFormData({description:'', analysis:null})} className="hover:text-indigo-600">清空</button>
+                                <span>事故經過詳細描述 / Case Detail</span>
+                                <button onClick={() => setFormData({description:'', analysis:null})} className="hover:text-indigo-600 font-bold px-2 py-1">清空</button>
                             </div>
                             <textarea 
-                                placeholder="請輸入事故經過描述..."
+                                placeholder="請輸入事故描述細節..."
                                 value={formData.description}
                                 onChange={e => setFormData({...formData, description: e.target.value})}
                                 disabled={loading}
-                                className="w-full h-40 p-5 rounded-xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none transition-all text-slate-700 font-medium text-base leading-relaxed"
+                                className="w-full h-40 p-5 rounded-xl border border-slate-200 bg-slate-50 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none transition-all text-slate-700 font-medium text-base leading-relaxed shadow-inner"
                             />
                             <button 
                                 onClick={handleAnalyze}
@@ -165,7 +169,7 @@
                                 className="w-full mt-4 py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg disabled:opacity-50 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
                             >
                                 {loading ? <Icon name="Loader2" className="animate-spin" /> : <Icon name="Target" />}
-                                {loading ? "AI 生成中，請稍候..." : "開始 AI 診斷分析"}
+                                {loading ? "連線分析中，請稍候..." : "開始 AI 診斷分析"}
                             </button>
                         </div>
 
@@ -173,7 +177,7 @@
                             <div className="animate-fade-in bg-white rounded-3xl p-8 shadow-xl border border-slate-200">
                                 <div className="flex justify-between items-center mb-8 pb-4 border-b">
                                     <div className="flex items-center gap-3 font-bold text-xl text-slate-800 tracking-tight">
-                                        <div className="w-2 h-8 bg-indigo-600 rounded-full" /> 分析報告摘要
+                                        <div className="w-2 h-8 bg-indigo-600 rounded-full" /> 事故分析摘要
                                     </div>
                                     <div className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wide border ${
                                         formData.analysis.riskLevel === '高' ? 'bg-red-50 text-red-600 border-red-200' : 
@@ -188,7 +192,7 @@
                                     <div className="p-5 bg-rose-50/50 rounded-2xl border border-rose-100 flex flex-col">
                                         <h4 className="text-rose-600 font-black mb-4 flex items-center gap-2 tracking-widest uppercase"><Icon name="Zap" />直接原因</h4>
                                         <ul className="space-y-3 text-slate-700 flex-grow font-medium italic">
-                                            {formData.analysis.directCauses.map((c,i)=><li key={i} className="pl-2 border-l-2 border-rose-200">"{c}"</li>)}
+                                            {(formData.analysis.directCauses || []).map((c,i)=><li key={i} className="pl-2 border-l-2 border-rose-200">"{c}"</li>)}
                                         </ul>
                                     </div>
 
@@ -196,7 +200,7 @@
                                         <h4 className="text-amber-600 font-black mb-4 flex items-center gap-2 tracking-widest uppercase"><Icon name="Cpu" />間接原因</h4>
                                         <div className="space-y-6 flex-grow">
                                             <div>
-                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase">
+                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase tracking-widest">
                                                     <Icon name="AlertTriangle" className="text-[10px]" /> 不安全的狀況
                                                 </p>
                                                 <ul className="space-y-2 text-slate-700 font-medium">
@@ -204,7 +208,7 @@
                                                 </ul>
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase">
+                                                <p className="text-[10px] font-bold text-amber-700 mb-2 bg-amber-200/50 px-2 py-0.5 rounded w-fit flex items-center gap-1 uppercase tracking-widest">
                                                     <Icon name="UserX" className="text-[10px]" /> 不安全的行為
                                                 </p>
                                                 <ul className="space-y-2 text-slate-700 font-medium">
@@ -217,7 +221,7 @@
                                     <div className="p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100 flex flex-col">
                                         <h4 className="text-indigo-600 font-black mb-4 flex items-center gap-2 tracking-widest uppercase"><Icon name="ShieldCheck" />基本原因</h4>
                                         <ul className="space-y-3 text-slate-700 flex-grow font-medium">
-                                            {formData.analysis.basicCauses.map((c,i)=><li key={i} className="pl-2 border-l-2 border-indigo-200">{c}</li>)}
+                                            {(formData.analysis.basicCauses || []).map((c,i)=><li key={i} className="pl-2 border-l-2 border-indigo-200">{c}</li>)}
                                         </ul>
                                     </div>
                                 </div>
@@ -225,8 +229,8 @@
                                 <section className="bg-emerald-50/50 p-6 rounded-2xl border border-emerald-100">
                                     <h4 className="text-emerald-800 font-black mb-6 flex items-center gap-2 tracking-widest uppercase"><Icon name="Lightbulb" />建議改善對策</h4>
                                     <div className="grid md:grid-cols-2 gap-4">
-                                        {formData.analysis.countermeasures.map((m,i)=>(
-                                            <div key={i} className="bg-white p-4 rounded-xl border border-emerald-100 text-slate-700 shadow-sm flex gap-3 font-semibold">
+                                        {(formData.analysis.countermeasures || []).map((m,i)=>(
+                                            <div key={i} className="bg-white p-4 rounded-xl border border-emerald-100 text-slate-700 shadow-sm font-semibold flex gap-3 transition-all hover:scale-[1.02]">
                                                 <Icon name="CheckCircle2" /> <span>{m}</span>
                                             </div>
                                         ))}
